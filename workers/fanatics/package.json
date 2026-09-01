@@ -1,0 +1,14 @@
+{
+  "name": "fanatics-scraper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Standalone Playwright scraper for Fanatics Authentic, deployed as its own Railway service. Deliberately isolated from the main autograph-tracker app/package.json so its Chromium download and dependencies never touch the Vercel build.",
+  "scripts": {
+    "scrape": "node scrape.mjs"
+  },
+  "dependencies": {
+    "pg": "^8.13.1",
+    "playwright": "^1.49.1"
+  }
+}

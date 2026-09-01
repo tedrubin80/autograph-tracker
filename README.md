@@ -45,19 +45,38 @@ vercel env pull .env
 | [Dark Parlor Originals](https://www.darkparlororiginals.com) | Shopify | ✅ enabled |
 | [SWAU](https://swau.com) | Shopify (scoped to their signings collection) | ✅ enabled |
 | [Mintych Authentics](https://www.mintychauthentics.com) | Shopify | ✅ enabled |
+| [Celebrity Authentics](https://celebrityauthentics.com) | Shopify | ✅ enabled |
 | [CSR Collectibles](https://csrcollectibles.com) | WooCommerce | ✅ enabled |
-| Fanatics Authentic, Steiner Sports, Upper Deck Authenticated, MAB, GottaHaveIt/RR Auction | custom | ⛔ placeholder only |
+| [Twin Cities Comics](https://twincitiescomics.com) | WooCommerce (private signings category) | ✅ enabled |
+| [Upper Deck Authenticated](https://upperdeckstore.com) | Magento (best guess — see note below) | ✅ enabled, unverified |
+| [Fanatics Authentic](https://www.fanaticsauthentic.com) | custom, JS-rendered — own Playwright worker, see `workers/fanatics/` | ⚠️ separate pipeline, unverified |
+| Steiner Sports, MAB | custom | ⛔ placeholder only |
 
 Full config, including notes on a couple of best-guess name matches and why
-the "big general dealer" shops are disabled, lives in `src/scraper/shops.ts`.
+the remaining shops are disabled, lives in `src/scraper/shops.ts`.
 
-**A note on verification:** the Shopify/WooCommerce adapters were written
-against each platform's documented default behavior, not confirmed against
-live responses from every shop above — this development environment's
-network egress doesn't reach those domains. Run `npm run scrape` and check
-the output (and the "Tracked shops" panel at the bottom of the homepage,
-which surfaces per-shop errors) before trusting the data; tune selectors in
-`src/scraper/adapters/woocommerce.ts` if CSR's markup doesn't match.
+**A note on verification:** the Shopify/WooCommerce/Magento adapters were
+written against each platform's documented default behavior, not confirmed
+against live responses from every shop above — this development
+environment's network egress doesn't reach those domains. Run `npm run
+scrape` and check the output (and the "Tracked shops" panel at the bottom of
+the homepage, which surfaces per-shop errors) before trusting the data; tune
+selectors in `src/scraper/adapters/woocommerce.ts` or `magento.ts` if a
+shop's markup doesn't match. Upper Deck in particular is a guess at both the
+platform (Magento) and the listing path (`/memorabilia.html`) — check its
+listing count and error field after the first real run.
+
+**Fanatics Authentic is different from the rest**: its storefront is a fully
+custom platform with no known public catalog structure, most likely rendered
+client-side, so a plain HTTP fetch can't see its products. It runs as an
+isolated Playwright-based worker in `workers/fanatics/` — its own
+`package.json`, its own Railway service — specifically so a ~300MB Chromium
+download and browser-automation dependency never touches the main app's
+`package.json` that Vercel builds. It looks for schema.org JSON-LD product
+data (a common, standardized pattern) rather than guessed CSS selectors,
+which means it may come back empty until someone checks its logs and
+adjusts `workers/fanatics/scrape.mjs` — see the comments at the top of that
+file.
 
 ## Adding a shop
 
@@ -68,30 +87,45 @@ which surfaces per-shop errors) before trusting the data; tune selectors in
 2. **Shopify:** add an entry to `src/scraper/shops.ts` using
    `createShopifyAdapter({ baseUrl })`. Optionally pass `collectionHandle`
    to scope to one collection instead of the whole catalog.
-3. **WooCommerce** (`/product-category/...` URLs, "Add to basket" buttons):
-   use `createWooCommerceAdapter({ baseUrl, listingPath })`. Run it once,
-   inspect the listings it returns, and adjust `selectors` if the theme
-   doesn't match WooCommerce's stock class names.
-4. **Anything else:** write a new file under `src/scraper/adapters/` that
-   returns `RawListing[]` (see `src/scraper/types.ts`), and wire it in the
-   same way.
-5. Set `enabled: true` once you've confirmed it returns real data.
+3. **WooCommerce** (`/product-category/...` or `/product/<slug>/` URLs,
+   "Add to basket" buttons): use `createWooCommerceAdapter({ baseUrl,
+   listingPath })`. Run it once, inspect the listings it returns, and adjust
+   `selectors` if the theme doesn't match WooCommerce's stock class names.
+4. **Magento** (`.html`-suffixed category pages, an `mcprod.`-style
+   subdomain in evidence): same idea, `createMagentoAdapter({ baseUrl,
+   listingPath })` from `src/scraper/adapters/magento.ts`.
+5. **A fetch-based platform not covered above:** write a new file under
+   `src/scraper/adapters/` that returns `RawListing[]` (see
+   `src/scraper/types.ts`), and wire it into `shops.ts` the same way.
+6. **A JS-rendered / heavily custom site** (product grid loads via
+   client-side JS, no simple HTML or JSON to fetch): don't add it to
+   `shops.ts` directly — that would pull a headless-browser dependency into
+   the main app's `package.json`, which Vercel also builds. Instead give it
+   its own subfolder under `workers/` with its own `package.json` and its
+   own Railway service, following `workers/fanatics/` as the template.
+7. Set `enabled: true` (or deploy the new worker) once you've confirmed it
+   returns real data.
 
 ## Scheduling scrapes
 
-Nothing runs on a schedule by default. Since the database is Neon (reachable
-from anywhere, not tied to one host's filesystem), the simplest option on
-Vercel is **GitHub Actions hitting the deployed app**:
-`.github/workflows/scrape.yml` POSTs to `/api/scrape` on a schedule. Set repo
-secrets `APP_URL` (e.g. `https://autograph-tracker.vercel.app`) and
-`SCRAPE_SECRET` (same value as the `SCRAPE_SECRET` env var on the Vercel
-project) to enable it.
+**What's actually running:** a Railway project (`autograph-tracker-scraper`)
+with two services, both pointed at this repo and both writing straight to
+the same Neon database via `DATABASE_URL`:
 
+- **`scraper`** — the main app's shops, via `npm run scrape` on a
+  `0 */6 * * *` cron (every 6 hours), restart policy off since it's a
+  one-shot job. Railway runs the start command once immediately on deploy
+  as well as on the schedule, so pushing a fix re-runs it right away.
+- **`fanatics`** (once added) — `workers/fanatics/`'s own cron, same
+  pattern, isolated so its Playwright dependency never reaches Vercel.
+
+`.github/workflows/scrape.yml` (POSTs to `/api/scrape` on a schedule) is
+left in the repo as an alternative if you'd rather not run a Railway
+service — set repo secrets `APP_URL` and `SCRAPE_SECRET` to use it instead.
 A scrape across several shops can run longer than a typical serverless
-function timeout — see the note in `src/app/api/scrape/route.ts`. If that
-becomes a problem (more shops, slower sites), run `npm run scrape` from a
-GitHub Actions job directly instead (it just needs `DATABASE_URL` as a
-secret) rather than round-tripping through the deployed app.
+function timeout, which is the main reason Railway (a real, always-available
+process) ended up being the primary path — see the note in
+`src/app/api/scrape/route.ts`.
 
 ## Deploying
 

@@ -1,6 +1,7 @@
 import type { ShopConfig } from "./types";
 import { createShopifyAdapter } from "./adapters/shopify";
 import { createWooCommerceAdapter } from "./adapters/woocommerce";
+import { createMagentoAdapter } from "./adapters/magento";
 
 function notImplemented(shopName: string): () => Promise<never> {
   return async () => {
@@ -78,19 +79,41 @@ export const shops: ShopConfig[] = [
       listingPath: "/product-category/pre-order/consignment/",
     }),
   },
+  {
+    id: "celebrity-authentics",
+    name: "Celebrity Authentics",
+    homepageUrl: "https://celebrityauthentics.com",
+    platform: "shopify",
+    enabled: true,
+    note:
+      "Confirmed Shopify via search (/collections/<celeb>-pre-order/products/...). Pre-orders " +
+      "are split across many per-celebrity collections rather than one shared one, so this " +
+      "scrapes the full catalog instead of scoping to a single collectionHandle.",
+    scrape: createShopifyAdapter({ baseUrl: "https://celebrityauthentics.com" }),
+  },
+  {
+    id: "twin-cities-comics",
+    name: "Twin Cities Comics",
+    homepageUrl: "https://twincitiescomics.com",
+    platform: "woocommerce",
+    enabled: true,
+    note: "Confirmed WooCommerce via search (/product/<slug>/, /product-category/private-signings/).",
+    scrape: createWooCommerceAdapter({
+      baseUrl: "https://twincitiescomics.com",
+      listingPath: "/product-category/private-signings/",
+    }),
+  },
 
   // --- Big general dealers: real, well-known shops, but not yet inspected —
   // most likely run custom platforms (not Shopify/WooCommerce), so they need
   // a bespoke adapter rather than the generic ones above. Disabled until
   // someone verifies the actual markup/API and wires one up.
-  {
-    id: "fanatics-authentic",
-    name: "Fanatics Authentic",
-    homepageUrl: "https://www.fanaticsauthentic.com",
-    platform: "custom",
-    enabled: false,
-    scrape: notImplemented("Fanatics Authentic"),
-  },
+  //
+  // Fanatics Authentic is NOT here: it's a fully custom, likely JS-rendered
+  // platform, so it gets its own isolated Playwright worker instead of a fetch
+  // -based adapter — see workers/fanatics/. That worker owns the
+  // "fanatics-authentic" shop row directly; adding it here too would fight
+  // over the same row on every scrape run.
   {
     id: "steiner-sports",
     name: "Steiner Sports",
@@ -102,10 +125,18 @@ export const shops: ShopConfig[] = [
   {
     id: "upper-deck-authenticated",
     name: "Upper Deck Authenticated",
-    homepageUrl: "https://www.upperdeckstore.com",
+    homepageUrl: "https://upperdeckstore.com",
     platform: "custom",
-    enabled: false,
-    scrape: notImplemented("Upper Deck Authenticated"),
+    enabled: true,
+    note:
+      "Signs point to Magento (.html category pages, an mcprod. subdomain) but this is " +
+      "inferred, not confirmed, and the /memorabilia.html listing path is a guess at where " +
+      "pre-order/signing inventory lives — check the first real run's listing count and the " +
+      "shop's own error field, and adjust selectors/listingPath in shops.ts if it comes back empty.",
+    scrape: createMagentoAdapter({
+      baseUrl: "https://upperdeckstore.com",
+      listingPath: "/memorabilia.html",
+    }),
   },
   {
     id: "mab-memorabilia",
