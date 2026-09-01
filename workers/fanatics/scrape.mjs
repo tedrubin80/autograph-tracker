@@ -153,7 +153,7 @@ async function main() {
     );
     await upsertShop({ lastScrapeError: "No JSON-LD product data found — extraction needs rework." });
     await pool.end();
-    return;
+    process.exit(0);
   }
 
   const now = new Date();
@@ -196,6 +196,7 @@ async function main() {
   await upsertShop();
   console.log(`[fanatics] wrote ${listings.length} listings`);
   await pool.end();
+  process.exit(0);
 }
 
 main().catch(async (err) => {
@@ -208,3 +209,15 @@ main().catch(async (err) => {
   await pool.end();
   process.exit(1);
 });
+
+// Belt-and-suspenders: main() explicitly exits on every path above, but if
+// something (a Playwright or pg handle) ever keeps the event loop alive
+// despite that, this forces the process down after a generous grace period
+// instead of running — and billing — indefinitely. This is what actually
+// happened before this fix: no explicit exit call anywhere, so a lingering
+// handle from Playwright/pg kept the process running for hours after the
+// script had logically finished.
+setTimeout(() => {
+  console.error("[fanatics] watchdog: forcing exit after hanging past the grace period");
+  process.exit(1);
+}, 120_000).unref?.();
