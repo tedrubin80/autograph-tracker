@@ -101,9 +101,12 @@ Vercel's integration, which sets `DATABASE_URL` automatically):
 - `DATABASE_URL` — the Neon connection string.
 - `SCRAPE_SECRET` — only if using the `/api/scrape` HTTP trigger above.
 
-Then push to the branch Vercel is watching; migrations aren't run
-automatically on deploy, so after schema changes run `npm run db:migrate`
-locally (or in CI) with `DATABASE_URL` pointed at the same Neon database.
+Then push to the branch Vercel is watching. Vercel runs `vercel-build`
+instead of `build` when present (`package.json`), which applies pending
+migrations before `next build` — so a schema change just needs a push, no
+manual migration step. Re-running migrations is safe (Drizzle tracks what's
+already applied); if it ever fails, the deploy fails loudly rather than
+shipping a build that queries tables that don't exist yet.
 
 ## A note on scraping etiquette
 
