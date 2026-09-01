@@ -49,12 +49,19 @@ export function createShopifyAdapter(options: {
 
   return async function scrapeShopify(): Promise<RawListing[]> {
     const listings: RawListing[] = [];
+    let previousFirstId: number | null = null;
 
     for (let page = 1; page <= maxPages; page++) {
       const url = `${base}${path}?limit=250&page=${page}`;
       const data = await politeFetchJson<ShopifyProductsResponse>(url);
       const products = data.products ?? [];
       if (products.length === 0) break;
+
+      // Some storefronts ignore an out-of-range (or any) `page` param and
+      // just keep re-serving page 1 instead of an empty array — without this
+      // check that loops to `maxPages` re-adding the same products.
+      if (products[0].id === previousFirstId) break;
+      previousFirstId = products[0].id;
 
       for (const product of products) {
         listings.push(mapProduct(base, product));
