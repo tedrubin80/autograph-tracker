@@ -1,15 +1,14 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import path from "node:path";
-import fs from "node:fs";
+import { neon } from "@neondatabase/serverless";
+import { drizzle } from "drizzle-orm/neon-http";
 import * as schema from "./schema";
 
-const dbPath = process.env.DATABASE_PATH ?? path.join(process.cwd(), "data", "autograph-tracker.db");
+// Deliberately not thrown eagerly: this module is imported at build time
+// (Next.js evaluates route/page modules while collecting page data), where
+// DATABASE_URL may not be injected yet. A placeholder here lets the build
+// succeed; a real query against it fails loudly at request time instead,
+// which is what we want if the env var is ever genuinely missing at runtime.
+const connectionString = process.env.DATABASE_URL || "postgresql://user:pass@unset.invalid/unset";
 
-fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+const sql = neon(connectionString);
 
-const sqlite = new Database(dbPath);
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
-
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(sql, { schema });

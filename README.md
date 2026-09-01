@@ -11,7 +11,8 @@ filter — instead of checking five different shop sites by hand.
   catalog endpoint for Shopify stores, HTML parsing for WooCommerce stores.
   A run upserts everything into the database and marks listings no longer
   found as inactive (sold through / removed).
-- **Database** (`src/db/`): SQLite via [Drizzle ORM](https://orm.drizzle.team/).
+- **Database** (`src/db/`): Postgres (built for [Neon](https://neon.tech), via
+  its serverless HTTP driver) through [Drizzle ORM](https://orm.drizzle.team/).
   Two tables — `shops` and `listings`.
 - **Web app** (`src/app/`): a Next.js page that reads straight from the
   database, plus a small JSON API at `/api/listings`.
@@ -20,11 +21,20 @@ filter — instead of checking five different shop sites by hand.
 
 ```bash
 npm install
-cp .env.example .env
-npm run db:generate   # only needed after changing src/db/schema.ts
-npm run db:migrate    # creates ./data/autograph-tracker.db
-npm run scrape         # populate it
-npm run dev             # http://localhost:3000
+cp .env.example .env   # then fill in DATABASE_URL — see below
+npm run db:generate    # only needed after changing src/db/schema.ts
+npm run db:migrate     # applies migrations to the DB in DATABASE_URL
+npm run scrape          # populate it
+npm run dev              # http://localhost:3000
+```
+
+`DATABASE_URL` needs a real Neon (or any Postgres) connection string —
+nothing runs against an implicit local database. If this project is linked
+to Vercel with Neon connected (`vercel link`, once), pull the same value
+Vercel uses instead of copying it by hand:
+
+```bash
+vercel env pull .env
 ```
 
 ## Tracked shops
@@ -69,30 +79,31 @@ which surfaces per-shop errors) before trusting the data; tune selectors in
 
 ## Scheduling scrapes
 
-Nothing runs on a schedule by default — pick whichever fits how you deploy:
+Nothing runs on a schedule by default. Since the database is Neon (reachable
+from anywhere, not tied to one host's filesystem), the simplest option on
+Vercel is **GitHub Actions hitting the deployed app**:
+`.github/workflows/scrape.yml` POSTs to `/api/scrape` on a schedule. Set repo
+secrets `APP_URL` (e.g. `https://autograph-tracker.vercel.app`) and
+`SCRAPE_SECRET` (same value as the `SCRAPE_SECRET` env var on the Vercel
+project) to enable it.
 
-- **A host you control** (a VPS, Railway, Fly): a plain cron job or
-  Railway's Cron Jobs feature running `npm run scrape` is simplest, since it
-  shares the filesystem with the SQLite database.
-- **GitHub Actions, hitting a deployed app:** `.github/workflows/scrape.yml`
-  POSTs to `/api/scrape` on a schedule. Set repo secrets `APP_URL` and
-  `SCRAPE_SECRET` (same value as the `SCRAPE_SECRET` env var on your
-  deployment) to use it. Only works if your deployment's function timeout
-  is long enough to finish a full scrape — see the note in
-  `src/app/api/scrape/route.ts`.
+A scrape across several shops can run longer than a typical serverless
+function timeout — see the note in `src/app/api/scrape/route.ts`. If that
+becomes a problem (more shops, slower sites), run `npm run scrape` from a
+GitHub Actions job directly instead (it just needs `DATABASE_URL` as a
+secret) rather than round-tripping through the deployed app.
 
 ## Deploying
 
-This defaults to SQLite on local disk, which needs a **persistent
-filesystem shared between the web process and the scrape process** —
-Railway, Fly.io, or a plain VPS/Docker container all work well.
+Set on the Vercel project (already the case once Neon is connected via
+Vercel's integration, which sets `DATABASE_URL` automatically):
 
-**Vercel (or any serverless host) won't work as-is**: serverless functions
-get an ephemeral, per-invocation filesystem, so a SQLite file written by one
-request is gone by the next. To deploy there, swap the driver in
-`src/db/client.ts` for a hosted Postgres (`drizzle-orm/node-postgres` or
-similar) — the schema in `src/db/schema.ts` was written to be portable
-(no SQLite-only column types) specifically so that swap stays small.
+- `DATABASE_URL` — the Neon connection string.
+- `SCRAPE_SECRET` — only if using the `/api/scrape` HTTP trigger above.
+
+Then push to the branch Vercel is watching; migrations aren't run
+automatically on deploy, so after schema changes run `npm run db:migrate`
+locally (or in CI) with `DATABASE_URL` pointed at the same Neon database.
 
 ## A note on scraping etiquette
 

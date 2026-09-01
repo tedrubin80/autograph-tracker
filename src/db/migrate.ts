@@ -1,5 +1,7 @@
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
+import "dotenv/config";
+import { migrate } from "drizzle-orm/neon-http/migrator";
 import { db } from "./client";
 
-migrate(db, { migrationsFolder: "./drizzle" });
-console.log("Migrations applied.");
+migrate(db, { migrationsFolder: "./drizzle" }).then(() => {
+  console.log("Migrations applied.");
+});

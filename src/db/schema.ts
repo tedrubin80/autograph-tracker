@@ -1,17 +1,17 @@
-import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { pgTable, text, integer, boolean, timestamp, index, uniqueIndex } from "drizzle-orm/pg-core";
 
-export const shops = sqliteTable("shops", {
+export const shops = pgTable("shops", {
   id: text("id").primaryKey(), // slug, e.g. "zobie-productions"
   name: text("name").notNull(),
   homepageUrl: text("homepage_url").notNull(),
   platform: text("platform").notNull(), // "shopify" | "woocommerce" | "custom"
-  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
-  lastScrapedAt: integer("last_scraped_at", { mode: "timestamp_ms" }),
+  enabled: boolean("enabled").notNull().default(true),
+  lastScrapedAt: timestamp("last_scraped_at", { withTimezone: true }),
   lastScrapeError: text("last_scrape_error"),
 });
 
-// Listing status. Kept as a plain string column (not a DB enum) so the
-// schema stays portable if this ever moves off SQLite to Postgres.
+// Listing status. Kept as a plain string column (not a DB enum) so adding a
+// new status never requires a migration that touches an enum type.
 export const LISTING_STATUSES = [
   "PRE_ORDER",
   "SIGNING_EVENT",
@@ -21,7 +21,7 @@ export const LISTING_STATUSES = [
 ] as const;
 export type ListingStatus = (typeof LISTING_STATUSES)[number];
 
-export const listings = sqliteTable(
+export const listings = pgTable(
   "listings",
   {
     id: text("id").primaryKey(),
@@ -37,10 +37,10 @@ export const listings = sqliteTable(
     currency: text("currency").notNull().default("USD"),
     status: text("status").notNull().default("UNKNOWN"),
     tags: text("tags").notNull().default(""), // comma-separated
-    eventDate: integer("event_date", { mode: "timestamp_ms" }), // signing/event date if known
-    firstSeenAt: integer("first_seen_at", { mode: "timestamp_ms" }).notNull(),
-    lastSeenAt: integer("last_seen_at", { mode: "timestamp_ms" }).notNull(),
-    isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+    eventDate: timestamp("event_date", { withTimezone: true }), // signing/event date if known
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+    isActive: boolean("is_active").notNull().default(true),
   },
   (table) => [
     uniqueIndex("listings_shop_external_idx").on(table.shopId, table.externalId),
