@@ -1,0 +1,21 @@
+name: Scheduled scrape
+
+on:
+  schedule:
+    - cron: "0 */6 * * *" # every 6 hours
+  workflow_dispatch: {}
+
+jobs:
+  trigger-scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/scrape
+        run: |
+          if [ -z "${APP_URL}" ] || [ -z "${SCRAPE_SECRET}" ]; then
+            echo "Set the APP_URL and SCRAPE_SECRET repo secrets to enable this workflow." >&2
+            exit 1
+          fi
+          curl -sf -X POST "${APP_URL%/}/api/scrape" -H "x-scrape-secret: ${SCRAPE_SECRET}"
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          SCRAPE_SECRET: ${{ secrets.SCRAPE_SECRET }}
