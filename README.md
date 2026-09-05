@@ -49,7 +49,7 @@ vercel env pull .env
 | [CSR Collectibles](https://csrcollectibles.com) | WooCommerce | ✅ enabled |
 | [Twin Cities Comics](https://twincitiescomics.com) | WooCommerce (private signings category) | ✅ enabled |
 | [Upper Deck Authenticated](https://upperdeckstore.com) | Magento (best guess — see note below) | ✅ enabled, unverified |
-| [Fanatics Authentic](https://www.fanaticsauthentic.com) | custom, JS-rendered — own Playwright worker, see `workers/fanatics/` | ⚠️ separate pipeline, unverified |
+| [Fanatics Authentic](https://www.fanaticsauthentic.com) | custom, JS-rendered — Playwright worker in `workers/fanatics/` | ⛔ not deployed, see note below |
 | Steiner Sports, MAB | custom | ⛔ placeholder only |
 
 Full config, including notes on a couple of best-guess name matches and why
@@ -68,15 +68,18 @@ listing count and error field after the first real run.
 
 **Fanatics Authentic is different from the rest**: its storefront is a fully
 custom platform with no known public catalog structure, most likely rendered
-client-side, so a plain HTTP fetch can't see its products. It runs as an
-isolated Playwright-based worker in `workers/fanatics/` — its own
-`package.json`, its own Railway service — specifically so a ~300MB Chromium
-download and browser-automation dependency never touches the main app's
-`package.json` that Vercel builds. It looks for schema.org JSON-LD product
-data (a common, standardized pattern) rather than guessed CSS selectors,
-which means it may come back empty until someone checks its logs and
-adjusts `workers/fanatics/scrape.mjs` — see the comments at the top of that
-file.
+client-side, so a plain HTTP fetch can't see its products. The code lives in
+`workers/fanatics/` as an isolated Playwright-based worker — its own
+`package.json`, its own Dockerfile (Microsoft's official Playwright image,
+needed because Railway's default build/runtime split otherwise discards the
+system libraries Chromium needs) — specifically so a browser-automation
+dependency never touches the main app's `package.json` that Vercel builds.
+It looks for schema.org JSON-LD product data (a common, standardized
+pattern) rather than guessed CSS selectors, but came back empty on the one
+real run so far — nothing was found at the guessed starting URL. **It's not
+currently deployed** (removed from Railway); redeploy it once someone finds
+where Fanatics actually publishes structured product data, or a better
+starting point than the guess in `scrape.mjs`.
 
 ## Adding a shop
 
@@ -109,21 +112,28 @@ file.
 ## Scheduling scrapes
 
 **What's actually running:** a Railway project (`autograph-tracker-scraper`)
-with two services, both pointed at this repo and both writing straight to
-the same Neon database via `DATABASE_URL`:
+with a `scraper` service pointed at this repo, writing straight to the same
+Neon database via `DATABASE_URL` — the main app's shops, via `npm run
+scrape` on its own cron (restart policy off since it's a one-shot job).
+Railway runs the start command once immediately on deploy as well as on the
+schedule, so pushing a fix re-runs it right away.
 
-- **`scraper`** — the main app's shops, via `npm run scrape` on a
-  `0 */6 * * *` cron (every 6 hours), restart policy off since it's a
-  one-shot job. Railway runs the start command once immediately on deploy
-  as well as on the schedule, so pushing a fix re-runs it right away.
-- **`fanatics`** (once added) — `workers/fanatics/`'s own cron, same
-  pattern, isolated so its Playwright dependency never reaches Vercel.
+`workers/fanatics/` (the isolated Playwright-based scraper for Fanatics
+Authentic — see the note above) is not currently deployed; it was removed
+from Railway pending a real look at the site to find a working data source.
+The code stays in the repo; redeploying it means creating a new Railway
+service pointed at that subfolder with its own `Dockerfile` build, same as
+before.
 
-`.github/workflows/scrape.yml` (POSTs to `/api/scrape` on a schedule) is
-left in the repo as an alternative if you'd rather not run a Railway
-service — set repo secrets `APP_URL` and `SCRAPE_SECRET` to use it instead.
-A scrape across several shops can run longer than a typical serverless
-function timeout, which is the main reason Railway (a real, always-available
+`.github/workflows/scrape.yml` (POSTs to `/api/scrape` on a schedule) has
+**no schedule trigger by default** — it's `workflow_dispatch`-only (manual).
+It previously had a `schedule:` block without the `APP_URL`/`SCRAPE_SECRET`
+repo secrets ever being set, so it failed instantly on every single
+scheduled run (100% failure rate) the whole time it was enabled. Don't
+re-add a schedule without setting both secrets first, and only do so if you
+actually want this running instead of (or alongside) Railway. A scrape
+across several shops can run longer than a typical serverless function
+timeout, which is the main reason Railway (a real, always-available
 process) ended up being the primary path — see the note in
 `src/app/api/scrape/route.ts`.
 

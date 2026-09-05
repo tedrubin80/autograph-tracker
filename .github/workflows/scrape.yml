@@ -1,8 +1,13 @@
 name: Scheduled scrape
 
+# No `schedule:` trigger — this is a manual/optional alternative to the
+# Railway "scraper" service, which is what actually runs on a schedule.
+# It previously had a schedule here without APP_URL/SCRAPE_SECRET repo
+# secrets ever being set, so every single scheduled run failed instantly
+# (100% failure rate, 16/16 runs) for as long as it was enabled. Re-add a
+# `schedule:` block only if you actually want this running instead of (or
+# alongside) Railway, and set both secrets first.
 on:
-  schedule:
-    - cron: "0 */6 * * *" # every 6 hours
   workflow_dispatch: {}
 
 jobs:
