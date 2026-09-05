@@ -114,9 +114,10 @@ starting point than the guess in `scrape.mjs`.
 **What's actually running:** a Railway project (`autograph-tracker-scraper`)
 with a `scraper` service pointed at this repo, writing straight to the same
 Neon database via `DATABASE_URL` — the main app's shops, via `npm run
-scrape` on its own cron (restart policy off since it's a one-shot job).
-Railway runs the start command once immediately on deploy as well as on the
-schedule, so pushing a fix re-runs it right away.
+scrape` on a `0 0 * * 3` cron (midnight UTC every Wednesday, restart policy
+off since it's a one-shot job). Railway runs the start command once
+immediately on deploy as well as on the schedule, so pushing a fix re-runs
+it right away — you don't have to wait for the next Wednesday to see it.
 
 `workers/fanatics/` (the isolated Playwright-based scraper for Fanatics
 Authentic — see the note above) is not currently deployed; it was removed
